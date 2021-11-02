@@ -798,6 +798,19 @@ char *do_query(const int sock, const char *query)
 		*p = '\0';
 	}
 
+	/* APNIC referrals:
+	 * descr:          Transferred to the RIPE region on 2018-08-27T14:42:34Z.
+	 */
+	if (!referral_server && strneq(buf, "descr:          Transferred to the ", 35)) {
+		if ((p = strstr(buf, "RIPE"))) {
+			referral_server = strdup("whois.ripe.net");
+		}
+
+		if ((p = strstr(buf, "ARIN"))) {
+			referral_server = strdup("whois.arin.net");
+		}
+	}
+
 	if (hide_line(&hide, buf))
 	    continue;
 
