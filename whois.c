@@ -304,7 +304,7 @@ int main(int argc, char *argv[])
 int handle_query(const char *hserver, const char *hport,
 	const char *query, const char *flags)
 {
-    char *server = NULL, *port = NULL;
+    char *server = NULL, *port = NULL, *referral_server = NULL;
     char *p, *query_string;
 
     if (hport) {
@@ -400,13 +400,13 @@ int handle_query(const char *hserver, const char *hport,
 
     sockfd = openconn(server, port);
 
-    server = do_query(sockfd, query_string);
+    referral_server = do_query(sockfd, query_string);
     free(query_string);
 
     /* recursion is fun */
-    if (server && !strchr(query, ' ')) {
-	printf(_("\n\nFound a referral to %s.\n\n"), server);
-	handle_query(server, NULL, query, flags);
+    if (referral_server && strcmp(server, referral_server) != 0 && !strchr(query, ' ')) {
+	printf(_("\n\nFound a referral to %s.\n\n"), referral_server);
+	handle_query(referral_server, NULL, query, flags);
     }
 
     return 0;
@@ -762,6 +762,9 @@ char *do_query(const int sock, const char *query)
     int hide = hide_discl;
     char *referral_server = NULL;
 
+	int arin_trailer = 0; // seen an ARIN trailer
+	int arin_db_data = 0; // seen '# start'
+
     temp = malloc(strlen(query) + 2 + 1);
     strcpy(temp, query);
     strcat(temp, "\r\n");
@@ -811,6 +814,51 @@ char *do_query(const int sock, const char *query)
 		}
 	}
 
+	/* LACNIC to ARIN transfers:
+	Looks quite like an ARIN reply, but contains only small amount of whois info.
+
+	#
+	# ARIN WHOIS data and services are subject to the Terms of Use
+	# available at: https://www.arin.net/resources/registry/whois/tou/
+	#
+	# If you see inaccuracies in the results, please report at
+	# https://www.arin.net/resources/registry/whois/inaccuracy_reporting/
+	#
+	# Copyright 1997-2022, American Registry for Internet Numbers, Ltd.
+	#
+
+
+	#
+	# Query terms are ambiguous.  The query is assumed to be:
+	#     "n 200.12.224.176"
+	#
+	# Use "?" to get help.
+	#
+
+	AMNET US LLC AMNET-BLK1 (NET-200-12-224-0-1) 200.12.224.0 - 200.12.239.255
+	Amnet LLC US AMNET-BLK1-US-WAN-01 (NET-200-12-224-176-1) 200.12.224.176 - 200.12.224.255
+
+
+
+	#
+	# ARIN WHOIS data and services are subject to the Terms of Use
+	# available at: https://www.arin.net/resources/registry/whois/tou/
+	#
+	# If you see inaccuracies in the results, please report at
+	# https://www.arin.net/resources/registry/whois/inaccuracy_reporting/
+	#
+	# Copyright 1997-2022, American Registry for Internet Numbers, Ltd.
+	#
+
+	*/
+	if (strneq(buf, "# ARIN WHOIS data and services are subject to the Terms of Use", 62)) {
+		arin_trailer = 1;
+	}
+	if (!(strneq(buf,"#", 1)) && strstr(buf, ":")) {
+		arin_db_data = 1;
+	}
+
+
 	if (hide_line(&hide, buf))
 	    continue;
 
@@ -819,6 +867,10 @@ char *do_query(const int sock, const char *query)
 	recode_fputs(buf, stdout);
 	fputc('\n', stdout);
     }
+
+	if (!referral_server && arin_trailer && !arin_db_data) {
+		referral_server = strdup("whois.arin.net");
+	}
 
     if (ferror(fi))
 	err_sys("fgets");
