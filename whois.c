@@ -814,7 +814,7 @@ char *do_query(const int sock, const char *query)
 		}
 	}
 
-	/* LACNIC to ARIN transfers:
+	/* LACNIC/AfriNIC to ARIN transfers:
 	Looks quite like an ARIN reply, but contains only small amount of whois info.
 
 	#
@@ -854,7 +854,9 @@ char *do_query(const int sock, const char *query)
 	if (strneq(buf, "# ARIN WHOIS data and services are subject to the Terms of Use", 62)) {
 		arin_trailer = 1;
 	}
-	if (!(strneq(buf,"#", 1)) && strstr(buf, ":")) {
+
+	// pseudo-check for data: colon in non-comment section
+	if (buf[0] != '#' && buf[0] != '%' && strstr(buf, ":")) {
 		arin_db_data = 1;
 	}
 
